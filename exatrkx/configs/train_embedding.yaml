@@ -13,7 +13,7 @@ lr: 0.002
 margin: 1
 n_workers: 1
 nb_layer: 6
-noise: false
+noise: true
 overwrite: true
 patience: 5
 pt_min: 0
