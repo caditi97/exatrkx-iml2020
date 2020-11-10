@@ -15,9 +15,9 @@ from torch_geometric.data import DataLoader
 from pytorch_lightning.callbacks import Callback
 
 # Local imports
-from exatrkx.src.utils_torch import graph_intersection
-from exatrkx.src import utils_torch
-from exatrkx.src.embedding.embedding_base import EmbeddingBase
+from src.utils_torch import graph_intersection
+from src import utils_torch
+from src.embedding.embedding_base import EmbeddingBase
 
 class LayerlessEmbedding(EmbeddingBase):
 

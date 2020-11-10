@@ -15,11 +15,11 @@ from pytorch_lightning import LightningModule
 from pytorch_lightning import loggers as pl_loggers
 
 # Local imports
-from exatrkx.src import utils_torch
-from exatrkx.src.utils_torch import graph_intersection
+from src import utils_torch
+from src.utils_torch import graph_intersection
 
 device = 'cuda' if torch.cuda.is_available() else 'cpu'
-from exatrkx.src import utils_dir
+from src import utils_dir
 
 def load_datasets(input_dir, train_split, seed = 0):
     '''
