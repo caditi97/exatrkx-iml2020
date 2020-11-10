@@ -7,7 +7,7 @@ train_split: [8, 1, 1] # Number of [training, validation, testing] examples
 endcaps: True
 layerwise: False
 layerless: True
-noise: True
+noise: 0
 adjacent: False
 
 # Model parameters

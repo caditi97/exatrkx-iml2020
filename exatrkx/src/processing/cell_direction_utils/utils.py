@@ -20,6 +20,35 @@ BARREL_VOLUMES = [8, 13, 17]
 #############################################
 #               REDUCE TRACKS               #
 #############################################
+
+def add_perc_noise(hits, truth, perc = 0.0):
+    print(f"adding {perc}% noise")
+    if perc >= 1.0:
+        return hits,truth
+    
+    unique_ids = truth.particle_id.unique()
+    track_ids_to_keep = unique_ids[np.where(unique_ids != 0)]
+    noise_hits = unique_ids[np.where(unique_ids == 0)]
+    where_to_keep = truth['particle_id'].isin(track_ids_to_keep)
+    hits_reduced  = hits[where_to_keep]
+    hit_ids_red = hits_reduced.hit_id.values
+    noise_ids = hits[~where_to_keep].hit_id.values
+    
+    if perc <= 0.0:
+        noise_ids = []
+    else:
+        num_rows = int(perc * noise_ids.shape[0])
+        noise_ids = np.random.permutation(noise_ids)[:num_rows]
+
+    #add noise
+    hits_ids_noise = np.concatenate([hit_ids_red, noise_ids])
+    
+    noise_hits = hits[hits['hit_id'].isin(hits_ids_noise)]
+    noise_truth = truth[truth['hit_id'].isin(hits_ids_noise)]
+    #noise_cells = cells[cells['hit_id'].isin(noise_truth.hit_id.values)]
+    
+    return noise_hits, noise_truth
+
 def remove_all_noise(hits, cells, truth):
     unique_ids = truth.particle_id.unique()
     track_ids_to_keep = unique_ids[np.where(unique_ids != 0)]

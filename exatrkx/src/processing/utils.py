@@ -13,6 +13,7 @@ import trackml.dataset
 
 import torch
 from torch_geometric.data import Data
+from .cell_direction_utils.utils import add_perc_noise
 
 from itertools import permutations
 import itertools
@@ -25,6 +26,11 @@ def get_cell_information(data, cell_features, output_dir, detector_orig, detecto
     event_file = data.event_file
     evtid = event_file[-4:]
     print("Cell features for", evtid)
+    
+    if noise == 0:
+        noise = False
+    else:
+        noise = True
 
     hits, truth = get_one_event(event_file,
                   detector_orig,
@@ -39,7 +45,7 @@ def get_cell_information(data, cell_features, output_dir, detector_orig, detecto
 
     return data
 
-def select_hits(hits, truth, particles, pt_min=0, endcaps=False, noise=False):
+def select_hits(hits, truth, particles, pt_min=0, endcaps=False, noise=0.0):
     # Barrel volume and layer ids
     if endcaps:
         vlids = [(7, 2), (7, 4), (7, 6), (7, 8), (7, 10), (7, 12), (7, 14),
@@ -69,10 +75,11 @@ def select_hits(hits, truth, particles, pt_min=0, endcaps=False, noise=False):
     # yielding NaN value
     hits = hits.fillna(value=0)
 
-    if noise is False:
+    if noise == 0.0:
         hits = hits[hits.particle_id > 0]
     else:
-        hits.loc[hits['particle_id']==0, 'particle_id'] = float("NaN")
+        #hits.loc[hits['particle_id']==0, 'particle_id'] = float("NaN")
+        hits, _ = add_perc_noise(hits,truth,noise)
     
     # apply pT cut
     if pt_min > 0:
@@ -93,7 +100,7 @@ def select_hits(hits, truth, particles, pt_min=0, endcaps=False, noise=False):
     return hits
 
 def build_event(event_file, pt_min, feature_scale, adjacent=True,
-                endcaps=False, layerless=True, layerwise=True, noise=False):
+                endcaps=False, layerless=True, layerwise=True, noise=0):
     # Get true edge list using the ordering by R' = distance from production vertex of each particle
     hits, particles, truth = trackml.dataset.load_event(
         event_file, parts=['hits', 'particles', 'truth'])
@@ -137,7 +144,7 @@ def build_event(event_file, pt_min, feature_scale, adjacent=True,
 def prepare_event(
             event_file, detector_orig, detector_proc, cell_features, output_dir=None,
             pt_min=0, adjacent=True, endcaps=False, layerless=True, layerwise=True,
-            noise=False, cell_information=True, **kwargs):
+            noise=0, cell_information=True, **kwargs):
 
     try:
         evtid = int(event_file[-9:])
