@@ -15,6 +15,7 @@ from torch_geometric.data import DataLoader
 from pytorch_lightning.callbacks import Callback
 
 # Local imports
+sys.path.append('/global/u2/c/caditi97/exatrkx-iml2020/exatrkx')
 from src.utils_torch import graph_intersection
 from src import utils_torch
 from src.embedding.embedding_base import EmbeddingBase
