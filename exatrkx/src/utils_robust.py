@@ -70,6 +70,34 @@ def get_emb_ckpt(emb_ckpt_path, train_split=None, cluster=None):
         emb_ckpt['hyper_parameters']['clustering'] = cluster
     return emb_ckpt
 
+
+def load_cktp(ckpt, ckpt_path, emb=False, filtering=False):
+    if emb:
+        emb_model = LayerlessEmbedding(ckpt['hyper_parameters'])
+        best_model = emb_model.load_from_checkpoint(ckpt_path, hparams=ckpt['hyper_parameters'])
+    #add filtering stuff
+    return best_model
+
+
+def get_cluster(best_emb,batch):
+    if 'ci' in best_emb.hparams["regime"]:
+            spatial = best_emb(torch.cat([batch.cell_data, batch.x], axis=-1))
+    else:
+            spatial = best_emb(batch.x)       
+    # truth information
+    e_bidir = torch.cat([batch.layerless_true_edges,
+                        torch.stack([batch.layerless_true_edges[1],
+                                    batch.layerless_true_edges[0]], axis=1).T], axis=-1)
+    if(torch.cuda.is_available()):
+        spatial = spatial.cuda()  
+    # clustering = build_edges
+    e_spatial = best_emb.clustering(spatial, best_emb.hparams["r_val"], best_emb.hparams["knn"])
+    # label edges as true and false
+    e_spatialn, y_cluster = graph_intersection(e_spatial, e_bidir)
+    espt = e_spatialn.cpu().detach().numpy().T
+    pid_np = batch.pid.detach().numpy()
+    return pid_np, espt, y_cluster
+    
     
 def emb_purity(best_emb,batch):
     
