@@ -6,5 +6,5 @@ layerwise: false
 n_files: 10
 n_tasks: 1
 n_workers: 2
-noise: 0.4
+noise: 0
 pt_min: 0
