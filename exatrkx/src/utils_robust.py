@@ -97,51 +97,44 @@ def get_cluster(best_emb,batch):
     espt = e_spatialn.cpu().detach().numpy().T
     pid_np = batch.pid.detach().numpy()
     return pid_np, espt, y_cluster
+
+def get_emb_metrics(data_path, emb_model,r_val=1.7,knn_val=500):
+    data = torch.load(data_path)
+    spatial = emb_model(torch.cat([data.cell_data, data.x], axis=-1))
     
-    
-def emb_purity(best_emb,batch):
-    
-    if 'ci' in best_emb.hparams["regime"]:
-            spatial = best_emb(torch.cat([batch.cell_data, batch.x], axis=-1))
-    else:
-            spatial = best_emb(batch.x)
-    
-    # truth information
-    e_bidir = torch.cat([batch.layerless_true_edges,
-                        torch.stack([batch.layerless_true_edges[1],
-                                    batch.layerless_true_edges[0]], axis=1).T], axis=-1)
     if(torch.cuda.is_available()):
         spatial = spatial.cuda()
         
-    # clustering = build_edges
-    e_spatial = best_emb.clustering(spatial, best_emb.hparams["r_val"], best_emb.hparams["knn"])
+    e_spatial = utils_torch.build_edges(spatial, r_val, knn_val)
+    e_spatial_np = e_spatial.cpu().numpy()
     
-    # label edges as true and false
-    e_spatial, y_cluster = graph_intersection(e_spatial, e_bidir)
+    # remove R dist from out to in
+    R_dist = torch.sqrt(data.x[:,0]**2 + data.x[:,2]**2)
     
-    # add all truth edges "weight" times, which is 4,
-    # to balance the number of truth and fake edges in one batch
-    if(torch.cuda.is_available()):
-        e_spatial = e_spatial.cuda()
-        e_bidir = e_bidir.cuda()
+    e_spatial_np = e_spatial_np[:, (R_dist[e_spatial_np[0]] <= R_dist[e_spatial_np[1]])]
+    e_bidir = torch.cat([data.layerless_true_edges,torch.stack([data.layerless_true_edges[1],
+                        data.layerless_true_edges[0]], axis=1).T], axis=-1)
+    e_spatial_n, y_cluster = graph_intersection(torch.from_numpy(e_spatial_np), e_bidir)
     
-    e_spatial = torch.cat([e_spatial,
-        e_bidir.transpose(0,1).repeat(1,best_emb.hparams["weight"]).view(-1, 2).transpose(0,1)], axis=-1)
-    y_cluster = np.concatenate([y_cluster.astype(int), np.ones(e_bidir.shape[1]*best_emb.hparams["weight"])])
-
-    # extract emedding features of seed hits and neighbor hits
-    seed_hits = spatial.index_select(0, e_spatial[1])
-    neighbors = spatial.index_select(0, e_spatial[0])
-    
-    # extract true positives
-    cluster_true = 2*len(batch.layerless_true_edges[0])
+    cluster_true = len(data.layerless_true_edges[0])
     cluster_true_positive = y_cluster.sum()
-    cluster_positive = len(e_spatial[0])
-
-    # calculate purity as true hits inside embedding radius / total hits inside embedding radius
+    cluster_positive = len(e_spatial_n[0])
     purity = cluster_true_positive/cluster_positive
+    eff = cluster_true_positive/cluster_true
     
-    return purity
+    return purity, eff
+
+def get_lvl_emb(mypath,emb_model,r_val=1.7,knn_val=500):
+    events = [f for f in listdir(mypath) if isfile(join(mypath, f))]
+    p_lvl = []
+    e_lvl = []
+    for evt in events:
+        data_path = join(mypath,evt)
+        p, e = get_emb_metrics(data_path, emb_model,r_val,knn_val) 
+        p_lvl.append(p)
+        e_lvl.append(e)
+    
+    return np.mean(p_lvl), np.mean(e_lvl)
 
 #############################################
 #               ADD NOISE                   #
