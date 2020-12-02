@@ -15,12 +15,217 @@ from embedding.embedding_base import *
 # from src.filter import filter_base
 # from src.filter.vanilla_filter import *
 
+# system import
+import pkg_resources
+import yaml
+import pprint
+import random
+random.seed(1234)
+import pandas as pd
+import itertools
+import matplotlib.pyplot as plt
+# %matplotlib widget
+
+# 3rd party
+import torch
+import torch.nn.functional as F
+from torch_geometric.data import Data
+from trackml.dataset import load_event
+from pytorch_lightning import Trainer
+from pytorch_lightning.callbacks import ModelCheckpoint
+
+
+# local import
+# from heptrkx.dataset import event as master
+from exatrkx import config_dict # for accessing predefined configuration files
+from exatrkx import outdir_dict # for accessing predefined output directories
+from exatrkx.src import utils_dir
+
+# for preprocessing
+from exatrkx import FeatureStore
+from exatrkx.src import utils_torch
+
+# for embedding
+from exatrkx import LayerlessEmbedding
+from exatrkx.src import utils_torch
+
+# for filtering
+from exatrkx import VanillaFilter
+
+# for GNN
+import tensorflow as tf
+from graph_nets import utils_tf
+from exatrkx import SegmentClassifier
+import sonnet as snt
+
+# for labeling
+from exatrkx.scripts.tracks_from_gnn import prepare as prepare_labeling
+from exatrkx.scripts.tracks_from_gnn import clustering as dbscan_clustering
+
+# track efficiency
+from trackml.score import _analyze_tracks
+from exatrkx.scripts.eval_reco_trkx import make_cmp_plot, pt_configs, eta_configs
+from functools import partial
+
 import matplotlib.pyplot as plt
 
 #default values
 os.environ['TRKXINPUTDIR']="/global/cfs/cdirs/m3443/data/trackml-kaggle/train_10evts"
-os.environ['TRKXOUTPUTDIR']= "/global/cfs/projectdirs/m3443/usr/caditi97/iml2020/out0"
+os.environ['TRKXOUTPUTDIR']= "/global/cfs/projectdirs/m3443/usr/caditi97/iml2020/outtest"
 
+
+#############################################
+#                  UTILS                    #
+#############################################
+
+def preprocess():
+    action = 'build'
+
+    config_file = pkg_resources.resource_filename(
+                        "exatrkx",
+                        os.path.join('configs', config_dict[action]))
+    with open(config_file) as f:
+        b_config = yaml.load(f, Loader=yaml.FullLoader)
+
+    pp = pprint.PrettyPrinter(indent=4)
+    pp.pprint(b_config)
+    
+    b_config['pt_min'] = 0
+    b_config['endcaps'] = True
+    b_config['n_workers'] = 1
+    b_config['n_files'] = 1
+    
+    preprocess_dm = FeatureStore(b_config)
+    preprocess_dm.prepare_data()
+
+def emb_eval(embed_ckpt_dir,data):
+    e_ckpt = torch.load(embed_ckpt_dir, map_location='cpu')
+    e_config = e_ckpt['hyper_parameters']
+    pp = pprint.PrettyPrinter(indent=4)
+    #pp.pprint(e_config)
+    
+    e_config = e_ckpt['hyper_parameters']
+    e_config['clustering'] = 'build_edges'
+    e_config['knn_val'] = 500
+    e_config['r_val'] = 1.7
+    
+    e_model = LayerlessEmbedding(e_config)
+    e_model.load_state_dict(e_ckpt["state_dict"])
+    
+    e_model.eval()
+    
+    spatial = e_model(torch.cat([data.cell_data, data.x], axis=-1))
+    
+    if(torch.cuda.is_available()):
+        spatial = spatial.cuda()
+
+    e_spatial = utils_torch.build_edges(spatial, e_model.hparams['r_val'], e_model.hparams['knn_val'])
+    
+    e_spatial = e_spatial.cpu().numpy()
+    
+    R_dist = torch.sqrt(data.x[:,0]**2 + data.x[:,2]**2) # distance away from origin...
+    e_spatial = e_spatial[:, (R_dist[e_spatial[0]] <= R_dist[e_spatial[1]])]
+    
+    return e_spatial
+
+def filtering(filter_ckpt_dir,data,e_spatial):
+    f_ckpt = torch.load(filter_ckpt_dir, map_location='cpu')
+    f_config = f_ckpt['hyper_parameters']
+    pp = pprint.PrettyPrinter(indent=4)
+    #pp.pprint(f_config)
+    
+    f_config['train_split'] = [0, 0, 1]
+    f_config['filter_cut'] = 0.18
+    
+    f_model = VanillaFilter(f_config)
+    f_model.load_state_dict(f_ckpt['state_dict'])
+    
+    f_model.eval()
+    
+    emb = None # embedding information was not used in the filtering stage.
+    output = f_model(torch.cat([data.cell_data, data.x], axis=-1), e_spatial, emb).squeeze()
+    output = torch.sigmoid(output)
+    
+    return output, f_model
+
+def build_graph(output, f_model,data, e_spatial, gnn_ckpt_dir,output_dir,ckpt_idx,dbscan_epsilon, dbscan_minsamples,n):
+    edge_list = e_spatial[:, output > f_model.hparams['filter_cut']]
+    
+    n_nodes = data.x.shape[0]
+    n_edges = edge_list.shape[1]
+    nodes = data.x.numpy().astype(np.float32)
+    edges = np.zeros((n_edges, 1), dtype=np.float32)
+    senders = edge_list[0]
+    receivers = edge_list[1]
+    
+    input_datadict = {
+    "n_node": n_nodes,
+    "n_edge": n_edges,
+    "nodes": nodes,
+    "edges": edges,
+    "senders": senders,
+    "receivers": receivers,
+    "globals": np.array([n_nodes], dtype=np.float32)
+    }
+    
+    input_graph = utils_tf.data_dicts_to_graphs_tuple([input_datadict])
+    
+    print(f'{n} APPLYING GNN.....')
+    
+    num_processing_steps_tr = 8
+    optimizer = snt.optimizers.Adam(0.001)
+    model = SegmentClassifier()
+
+    output_dir = gnn_ckpt_dir
+    checkpoint = tf.train.Checkpoint(optimizer=optimizer, model=model)
+    ckpt_manager = tf.train.CheckpointManager(checkpoint, directory=output_dir, max_to_keep=10)
+    status = checkpoint.restore(ckpt_manager.checkpoints[ckpt_idx])
+    print("Loaded {} checkpoint from {}".format(ckpt_idx, output_dir))
+    
+    outputs_gnn = model(input_graph, num_processing_steps_tr)
+    output_graph = outputs_gnn[-1]
+    
+    print(f'{n} TRACK LABELLING.....')
+    
+    input_matrix = prepare_labeling(tf.squeeze(output_graph.edges).numpy(), senders, receivers, n_nodes)
+    predict_tracks = dbscan_clustering(data.hid, input_matrix, dbscan_epsilon, dbscan_minsamples)
+    
+    return predict_tracks
+
+def track_eff(evt_path, predict_tracks,min_hits):
+    hits, particles, truth = load_event(evt_path, parts=['hits', 'particles', 'truth'])
+    hits = hits.merge(truth, on='hit_id', how='left')
+    hits = hits[hits.particle_id > 0] # remove noise hits
+    hits = hits.merge(particles, on='particle_id', how='left')
+    hits = hits[hits.nhits >= min_hits]
+    particles = particles[particles.nhits >= min_hits]
+    par_pt = np.sqrt(particles.px**2 + particles.py**2)
+    momentum = np.sqrt(particles.px**2 + particles.py**2 + particles.pz**2)
+    ptheta = np.arccos(particles.pz/momentum)
+    peta = -np.log(np.tan(0.5*ptheta))
+    
+    tracks = _analyze_tracks(hits, predict_tracks)
+    
+    purity_rec = np.true_divide(tracks['major_nhits'], tracks['nhits'])
+    purity_maj = np.true_divide(tracks['major_nhits'], tracks['major_particle_nhits'])
+    good_track = (frac_reco_matched < purity_rec) & (frac_truth_matched < purity_maj)
+
+    matched_pids = tracks[good_track].major_particle_id.values
+    score = tracks['major_weight'][good_track].sum()
+
+    n_recotable_trkx = particles.shape[0]
+    n_reco_trkx = tracks.shape[0]
+    n_good_recos = np.sum(good_track)
+    matched_idx = particles.particle_id.isin(matched_pids).values
+    
+    print("Processed {} events from {}".format(evtid, utils_dir.inputdir))
+    print("Reconstructable tracks:         {}".format(n_recotable_trkx))
+    print("Reconstructed tracks:           {}".format(n_reco_trkx))
+    print("Reconstructable tracks Matched: {}".format(n_good_recos))
+    print("Tracking efficiency:            {:.4f}".format(n_good_recos/n_recotable_trkx))
+    print("Tracking purity:               {:.4f}".format(n_good_recos/n_reco_trkx))
+    
+    return matched_idx, peta, par_pt
 
 #############################################
 #                  PLOTS                    #
@@ -56,6 +261,27 @@ def plot_noise_dist(dir_path, noise_keeps):
     labels = noise_keeps
     ax.set_xticklabels(labels)
     ax.legend()
+    
+def plot_matched(xarray, yarray, xlegend, ylegend, configs, xlabel, ylabel, ratio_label, outname, ax1,ax2,c):
+    m_vals, bins, _ = ax.hist(xarray, **configs, label=xlegend)
+    n_vals, _, _ = ax.hist(yarray, **configs, label=ylegend)
+    ax1.set_xlabel(xlabel, fontsize=fontsize)
+    ax1.set_ylabel(ylabel, fontsize=fontsize)
+    plt.legend()
+    plt.savefig("{}.pdf".format(outname))
+    
+    ratio, ratio_err = get_ratio(m_vals, n_vals)
+    xvals = [0.5*(x[1]+x[0]) for x in pairwise(bins)][1:]
+    xerrs = [0.5*(x[1]-x[0]) for x in pairwise(bins)][1:]
+    # print(xvals)
+    ax2.errorbar(xvals, ratio, yerr=ratio_err, fmt='o', xerr=xerrs, lw=2,c=c)
+    ax2.set_xlabel(xlabel)
+    ax2.set_ylabel(ratio_label)
+    ax2.set_yticks(np.arange(0.5, 1.05, step=0.05))
+    ax2.set_ylim(0.5, 1.05)
+    # ax.text(1, 0.8, "bins: [{}] GeV".format(", ".join(["{:.1f}".format(x) for x in pt_bins[1:]])))
+    plt.grid(True)
+    plt.savefig("{}_ratio.pdf".format(outname))
     
     
 #############################################
