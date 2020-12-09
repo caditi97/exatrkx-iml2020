@@ -8,12 +8,12 @@ import trackml
 import trackml.dataset
 import numpy as np
 
-from torch_cluster import radius_graph
-from utils_torch import build_edges
-from embedding.layerless_embedding import *
-from embedding.embedding_base import *
-# from src.filter import filter_base
-# from src.filter.vanilla_filter import *
+# from torch_cluster import radius_graph
+# from utils_torch import build_edges
+# from embedding.layerless_embedding import *
+# from embedding.embedding_base import *
+# # from src.filter import filter_base
+# # from src.filter.vanilla_filter import *
 
 # system import
 import pkg_resources
@@ -48,6 +48,7 @@ from exatrkx.src import utils_torch
 # for embedding
 from exatrkx import LayerlessEmbedding
 from exatrkx.src import utils_torch
+from utils_torch import *
 
 # for filtering
 from exatrkx import VanillaFilter
@@ -347,6 +348,13 @@ def get_emb_metrics(data_path, emb_model,r_val=1.7,knn_val=500):
     cluster_positive = len(e_spatial_n[0])
     purity = cluster_true_positive/cluster_positive
     eff = cluster_true_positive/cluster_true
+    
+    print("-----------")
+    print(f"cluster true = {cluster_true}")
+    print(f"cluste true positive = {cluster_true_positive}")
+    print(f"cluster positive = {cluster_positive}")
+    print(f"purity = {purity}")
+    print(f"efficiency = {eff}")
     
     return purity, eff
 

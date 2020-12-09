@@ -24,7 +24,7 @@ BARREL_VOLUMES = [8, 13, 17]
 def add_perc_noise(hits, truth, perc = 0.0):
     print(f"adding {perc}% noise")
     if perc >= 1.0:
-        return hits,truth
+        return hits
     
     unique_ids = truth.particle_id.unique()
     track_ids_to_keep = unique_ids[np.where(unique_ids != 0)]
@@ -44,10 +44,10 @@ def add_perc_noise(hits, truth, perc = 0.0):
     hits_ids_noise = np.concatenate([hit_ids_red, noise_ids])
     
     noise_hits = hits[hits['hit_id'].isin(hits_ids_noise)]
-    noise_truth = truth[truth['hit_id'].isin(hits_ids_noise)]
+    #noise_truth = truth[truth['hit_id'].isin(hits_ids_noise)]
     #noise_cells = cells[cells['hit_id'].isin(noise_truth.hit_id.values)]
     
-    return noise_hits, noise_truth
+    return noise_hits
 
 def remove_all_noise(hits, cells, truth):
     unique_ids = truth.particle_id.unique()

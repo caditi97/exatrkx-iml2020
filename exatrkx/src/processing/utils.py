@@ -75,11 +75,11 @@ def select_hits(hits, truth, particles, pt_min=0, endcaps=False, noise=0.0):
     # yielding NaN value
     hits = hits.fillna(value=0)
 
-    if noise == 0.0:
-        hits = hits[hits.particle_id > 0]
-    else:
-        #hits.loc[hits['particle_id']==0, 'particle_id'] = float("NaN")
-        hits, _ = add_perc_noise(hits,truth,noise)
+#     if noise == 0.0:
+#         hits = hits[hits.particle_id > 0]
+#     else:
+#         #hits.loc[hits['particle_id']==0, 'particle_id'] = float("NaN")
+#         hits = add_perc_noise(hits,truth,noise)
     
     # apply pT cut
     if pt_min > 0:
@@ -109,6 +109,7 @@ def build_event(event_file, pt_min, feature_scale, adjacent=True,
 
     # Handle which truth graph(s) are being produced
     layerless_true_edges, layerwise_true_edges = None, None
+    
 
     if layerless:
         hits = hits.assign(R=np.sqrt((hits.x - hits.vx)**2 + (hits.y - hits.vy)**2 + (hits.z - hits.vz)**2))
@@ -121,8 +122,14 @@ def build_event(event_file, pt_min, feature_scale, adjacent=True,
                 e.extend(list(itertools.product(i, j)))
 
         layerless_true_edges = np.array(e).T
+        
+        if noise == 0.0:
+            hits = hits[hits.particle_id > 0]
+        else:
+            hits = add_perc_noise(hits,truth,noise)
+            
         print("Layerless truth graph built for", event_file, "with size", layerless_true_edges.shape)
-
+        
     if layerwise:
         # Get true edge list using the ordering of layers
         records_array = hits.particle_id.to_numpy()
@@ -135,6 +142,8 @@ def build_event(event_file, pt_min, feature_scale, adjacent=True,
         layerwise_true_edges = np.concatenate([list(permutations(i, r=2)) for i in res if len(list(permutations(i, r=2))) > 0]).T
         if adjacent: layerwise_true_edges = layerwise_true_edges[:, (layers[layerwise_true_edges[1]] - layers[layerwise_true_edges[0]] == 1)]
         print("Layerwise truth graph built for", event_file, "with size", layerwise_true_edges.shape)
+        
+        
 
     return (hits[['r', 'phi', 'z']].to_numpy() / feature_scale,
             hits.particle_id.to_numpy(),
