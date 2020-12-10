@@ -21,7 +21,7 @@ BARREL_VOLUMES = [8, 13, 17]
 #               REDUCE TRACKS               #
 #############################################
 
-def add_perc_noise(hits, truth, perc = 0.0):
+def add_perc_noise(hits, truth, perc = 0.0, return_noise=False):   
     print(f"adding {perc}% noise")
     if perc >= 1.0:
         return hits
@@ -42,12 +42,16 @@ def add_perc_noise(hits, truth, perc = 0.0):
 
     #add noise
     hits_ids_noise = np.concatenate([hit_ids_red, noise_ids])
-    
-    noise_hits = hits[hits['hit_id'].isin(hits_ids_noise)]
+     
     #noise_truth = truth[truth['hit_id'].isin(hits_ids_noise)]
     #noise_cells = cells[cells['hit_id'].isin(noise_truth.hit_id.values)]
     
-    return noise_hits
+    if(return_noise):
+        result = hits[hits['hit_id'].isin(noise_ids)]
+    else:
+        result = hits[hits['hit_id'].isin(hits_ids_noise)]
+    
+    return result
 
 def remove_all_noise(hits, cells, truth):
     unique_ids = truth.particle_id.unique()
