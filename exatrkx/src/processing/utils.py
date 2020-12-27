@@ -142,11 +142,15 @@ def build_event(event_file, pt_min, feature_scale, adjacent=True,
         if adjacent: layerwise_true_edges = layerwise_true_edges[:, (layers[layerwise_true_edges[1]] - layers[layerwise_true_edges[0]] == 1)]
         print("Layerwise truth graph built for", event_file, "with size", layerwise_true_edges.shape)
         
+    noise_hits = noise_hits[noise_hits.particle_id == 0]
+    hit_features = ["r", "phi", "z", "hit_id", "particle_id"]
+    hits = pd.concat([hits[hit_features], noise_hits[hit_features]])
+        
 
-    return (noise_hits[['r', 'phi', 'z']].to_numpy() / feature_scale,
-            noise_hits.particle_id.to_numpy(),
+    return (hits[['r', 'phi', 'z']].to_numpy() / feature_scale,
+            hits.particle_id.to_numpy(),
             layers, layerless_true_edges, layerwise_true_edges,
-            noise_hits['hit_id'].to_numpy())
+            hits['hit_id'].to_numpy())
 
 def prepare_event(
             event_file, detector_orig, detector_proc, cell_features, output_dir=None,

@@ -149,7 +149,7 @@ def filtering(filter_ckpt_dir,data,e_spatial):
     
     return output, f_model
 
-def build_graph(output, f_model,data, e_spatial, gnn_ckpt_dir,output_dir,ckpt_idx,dbscan_epsilon, dbscan_minsamples,n):
+def build_graph(output, f_model,data, e_spatial, gnn_ckpt_dir,ckpt_idx,dbscan_epsilon, dbscan_minsamples):
     edge_list = e_spatial[:, output > f_model.hparams['filter_cut']]
     
     n_nodes = data.x.shape[0]
@@ -171,7 +171,7 @@ def build_graph(output, f_model,data, e_spatial, gnn_ckpt_dir,output_dir,ckpt_id
     
     input_graph = utils_tf.data_dicts_to_graphs_tuple([input_datadict])
     
-    print(f'{n} APPLYING GNN.....')
+    print(f' APPLYING GNN.....')
     
     num_processing_steps_tr = 8
     optimizer = snt.optimizers.Adam(0.001)
@@ -180,20 +180,20 @@ def build_graph(output, f_model,data, e_spatial, gnn_ckpt_dir,output_dir,ckpt_id
     output_dir = gnn_ckpt_dir
     checkpoint = tf.train.Checkpoint(optimizer=optimizer, model=model)
     ckpt_manager = tf.train.CheckpointManager(checkpoint, directory=output_dir, max_to_keep=10)
-    status = checkpoint.restore(ckpt_manager.checkpoints[ckpt_idx])
+    status = checkpoint.restore(ckpt_manager.checkpoints[ckpt_idx]).expect_partial()
     print("Loaded {} checkpoint from {}".format(ckpt_idx, output_dir))
     
     outputs_gnn = model(input_graph, num_processing_steps_tr)
     output_graph = outputs_gnn[-1]
     
-    print(f'{n} TRACK LABELLING.....')
+    print(f'TRACK LABELLING.....')
     
     input_matrix = prepare_labeling(tf.squeeze(output_graph.edges).numpy(), senders, receivers, n_nodes)
     predict_tracks = dbscan_clustering(data.hid, input_matrix, dbscan_epsilon, dbscan_minsamples)
     
     return predict_tracks
 
-def track_eff(evt_path, predict_tracks,min_hits):
+def track_eff(evt_path, predict_tracks,min_hits,frac_reco_matched, frac_truth_matched,evtid=0):
     hits, particles, truth = load_event(evt_path, parts=['hits', 'particles', 'truth'])
     hits = hits.merge(truth, on='hit_id', how='left')
     hits = hits[hits.particle_id > 0] # remove noise hits
@@ -219,12 +219,14 @@ def track_eff(evt_path, predict_tracks,min_hits):
     n_good_recos = np.sum(good_track)
     matched_idx = particles.particle_id.isin(matched_pids).values
     
+    print("----------")
     print("Processed {} events from {}".format(evtid, utils_dir.inputdir))
     print("Reconstructable tracks:         {}".format(n_recotable_trkx))
     print("Reconstructed tracks:           {}".format(n_reco_trkx))
     print("Reconstructable tracks Matched: {}".format(n_good_recos))
     print("Tracking efficiency:            {:.4f}".format(n_good_recos/n_recotable_trkx))
     print("Tracking purity:               {:.4f}".format(n_good_recos/n_reco_trkx))
+    print("----------")
     
     return matched_idx, peta, par_pt
 
