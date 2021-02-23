@@ -3,7 +3,7 @@ cell_information: true
 endcaps: true
 layerless: true
 layerwise: false
-n_files: 1000
+n_files: 10
 n_tasks: 1
 n_workers: 2
 noise: 0
