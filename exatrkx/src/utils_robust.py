@@ -219,14 +219,14 @@ def track_eff(evt_path, predict_tracks,min_hits,frac_reco_matched, frac_truth_ma
     n_good_recos = np.sum(good_track)
     matched_idx = particles.particle_id.isin(matched_pids).values
     
-    print("----------")
-    print("Processed {} events from {}".format(evtid, utils_dir.inputdir))
-    print("Reconstructable tracks:         {}".format(n_recotable_trkx))
-    print("Reconstructed tracks:           {}".format(n_reco_trkx))
-    print("Reconstructable tracks Matched: {}".format(n_good_recos))
-    print("Tracking efficiency:            {:.4f}".format(n_good_recos/n_recotable_trkx))
-    print("Tracking purity:               {:.4f}".format(n_good_recos/n_reco_trkx))
-    print("----------")
+#     print("----------")
+#     print("Processed {} events from {}".format(evtid, utils_dir.inputdir))
+#     print("Reconstructable tracks:         {}".format(n_recotable_trkx))
+#     print("Reconstructed tracks:           {}".format(n_reco_trkx))
+#     print("Reconstructable tracks Matched: {}".format(n_good_recos))
+#     print("Tracking efficiency:            {:.4f}".format(n_good_recos/n_recotable_trkx))
+#     print("Tracking purity:               {:.4f}".format(n_good_recos/n_reco_trkx))
+#     print("----------")
     
     return matched_idx, peta, par_pt
 
