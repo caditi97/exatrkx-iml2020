@@ -17,7 +17,11 @@ from exatrkx import utils_dir
 
 fontsize=16
 minor_size=14
-pt_bins = [-0.1, 0.1, 0.3, 0.5, 0.7, 0.9, 1.1, 1.5, 1.9, 2.4, 5]
+# pt_bins = [-0.1, 0.1, 0.3, 0.5, 0.7, 0.9, 1.1, 1.5, 1.9, 2.4, 5]
+# pt_bins = [0, 0.125, 0.25, 0.375, 0.5, 0.625, 0.75, 0.875, 1, 4]
+pt_bins = [-0.1, 0.1, 0.3, 0.5, 0.7, 0.9, 1.1, 5]
+
+
 pt_configs = {
     'bins': pt_bins,
     'histtype': 'step',
@@ -45,10 +49,10 @@ def get_ratio(x_vals, y_vals):
 
 
 def pairwise(iterable):
-  """s -> (s0,s1), (s1,s2), (s2, s3), ..."""
-  a, b = itertools.tee(iterable)
-  next(b, None)
-  return zip(a, b)
+    """s -> (s0,s1), (s1,s2), (s2, s3), ..."""
+    a, b = itertools.tee(iterable)
+    next(b, None)
+    return zip(a, b)
 
 def add_mean_std(array, x, y, ax, color='k', dy=0.3, digits=2, fontsize=12, with_std=True):
     this_mean, this_std = np.mean(array), np.std(array)
